@@ -1,0 +1,7 @@
+# requirements.txt
+python-telegram-bot==20.8
+sqlalchemy==2.0.25
+python-dateutil==2.9.0.post0
+dateparser==1.2.2
+psycopg2-binary==2.9.9  # Для PostgreSQL
+langdetect==1.0.9      # Для лучшего распознавания времени
