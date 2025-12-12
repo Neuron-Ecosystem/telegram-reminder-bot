@@ -1,52 +1,61 @@
-# dispatcher.py (Был core/dispatcher.py)
+# dispatcher.py
 
 import asyncio
 from datetime import datetime
-from config import DISPATCH_INTERVAL
-from db_manager import DbManager  # Изменение: импорт из db_manager
-from base import BaseGateway  # Изменение: импорт из base
-
+from config import DISPATCH_INTERVAL 
+from db_manager import DbManager
+from base import BaseGateway # Нужен для типизации
 
 class Dispatcher:
-    """Асинхронный цикл, который постоянно проверяет БД на наличие напоминаний к отправке."""
+    # ИСПРАВЛЕНИЕ: Конструктор теперь принимает 3 аргумента (self, db_manager, gateways)
+    def __init__(self, db_manager: DbManager, gateways: list[BaseGateway]): 
+        self.db_manager = db_manager
+        self.gateways = gateways # Сохраняем список всех шлюзов (Telegram, VK и т.д.)
+        self.is_running = True
 
-    def __init__(self, gateways: dict[str, BaseGateway]):
-        self.db_manager = DbManager()
-        self.gateways = gateways
-
-    async def _send_reminder_task(self, reminder):
-        """Задача по отправке одного напоминания."""
-        platform = reminder.platform
-        gateway = self.gateways.get(platform)
-
-        if gateway:
+    async def start(self):
+        """Основной цикл диспетчера, который проверяет напоминания."""
+        print("Dispatcher запущен и готов к работе.")
+        
+        while self.is_running:
             try:
-                message = f"🔔 **НАПОМИНАНИЕ!**\n\n{reminder.text}"
-                await gateway.send_message(reminder.user_id, message)
-                self.db_manager.mark_sent(reminder.id)
-                print(
-                    f"[{datetime.now().strftime('%H:%M:%S')}] Отправлено напоминание {reminder.id} на {platform}."
-                )
-            except Exception as e:
-                self.db_manager.mark_sent(reminder.id)
-                print(
-                    f"Ошибка отправки/пользователь недоступен {reminder.id} на {platform}: {e}"
-                )
-        else:
-            print(f"Неизвестная платформа: {platform} для напоминания {reminder.id}")
-
-    async def run_dispatcher(self):
-        """Главный асинхронный цикл проверки."""
-        print(f"Диспетчер запущен, интервал проверки: {DISPATCH_INTERVAL} сек.")
-        while True:
-            try:
+                # 1. Получаем список напоминаний, срок которых наступил
                 due_reminders = self.db_manager.get_due_reminders()
-
+                
                 if due_reminders:
-                    tasks = [self._send_reminder_task(r) for r in due_reminders]
-                    await asyncio.gather(*tasks)
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Найдено {len(due_reminders)} напоминаний для отправки.")
+                
+                # 2. Обрабатываем каждое напоминание
+                for reminder in due_reminders:
+                    # 3. Находим соответствующий шлюз (Telegram, VK)
+                    gateway = self._get_gateway(reminder.platform)
+                    
+                    if gateway:
+                        # 4. Формируем и отправляем сообщение
+                        message = f"🔔 **НАПОМИНАНИЕ!**\n\n{reminder.text}"
+                        await gateway.send_message(reminder.user_id, message)
+                        
+                        # 5. Помечаем как отправленное в БД
+                        self.db_manager.mark_as_sent(reminder.id)
+                    else:
+                        print(f"Ошибка: Не найден шлюз для платформы '{reminder.platform}'")
 
             except Exception as e:
-                print(f"Критическая ошибка в диспетчере: {e}")
+                # Критическая ошибка в цикле, но продолжаем работу
+                print(f"Критическая ошибка в цикле диспетчера: {e}")
 
+            # Ожидание перед следующей проверкой
             await asyncio.sleep(DISPATCH_INTERVAL)
+            
+        print("Dispatcher остановлен.")
+
+    def stop(self):
+        """Останавливает цикл диспетчера."""
+        self.is_running = False
+
+    def _get_gateway(self, platform_name: str) -> BaseGateway | None:
+        """Находит шлюз по имени платформы."""
+        for gateway in self.gateways:
+            if gateway.platform == platform_name:
+                return gateway
+        return None
