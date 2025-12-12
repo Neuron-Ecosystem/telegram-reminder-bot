@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from models import Reminder, init_db # init_db нам нужен для создания таблиц
+from models import Reminder, init_db # init_db нужен для создания таблиц
 from dateparser import parse
 import time # Используем time.sleep в Dispatcher
 
@@ -12,26 +12,27 @@ class DbManager:
         # 1. Инициализируем движок и создаем таблицы, если они не существуют
         self.engine = init_db(db_url) 
         
-        # 2. Создаем фабрику сессий, привязанную к движку
+        # 2. Создаем фабрику сессий, привязанную к движку (SQLAlchemy 2.0)
         self.Session = sessionmaker(bind=self.engine)
 
     # --- CRUD ОПЕРАЦИИ ---
 
-    def add_reminder(self, user_id, platform, text_body):
+    # ПРИМЕЧАНИЕ: Порядок аргументов изменен, чтобы соответствовать вызову из telegram.py
+    def add_reminder(self, platform, user_id, text_body): 
         # 1. Извлекаем команду и текст
         parts = text_body.split(maxsplit=1)
         if len(parts) < 2:
-            return None, "Пожалуйста, укажите время и текст напоминания."
+            return "Пожалуйста, укажите время и текст напоминания."
         
         time_str = parts[0]
         reminder_text = parts[1]
         
         # 2. Парсинг времени с учетом текущего времени (для относительных дат)
-        # Настройка: prefer_dates_from='future' и настройки для русского языка (если langdetect установился)
+        # Настройка: prefer_dates_from='future'
         dt = parse(time_str, settings={'PREFER_DATES_FROM': 'future', 'LANGUAGES': ['ru', 'en']})
         
         if not dt:
-            return None, "Не удалось распознать **будущую** дату/время. Попробуйте так: `/remind в 17:00 встреча`"
+            return "Не удалось распознать **будущую** дату/время. Попробуйте так: `/remind в 17:00 встреча`"
 
         # Убедимся, что дата в будущем
         if dt <= datetime.now():
@@ -42,7 +43,7 @@ class DbManager:
                  if dt <= datetime.now():
                     dt += timedelta(days=1)
             else:
-                 return None, "Дата находится в прошлом. Укажите будущее время."
+                 return "Дата находится в прошлом. Укажите будущее время."
 
 
         # 3. Создаем объект напоминания
@@ -59,18 +60,20 @@ class DbManager:
         try:
             session.add(new_reminder)
             session.commit()
-            return new_reminder, None
+            return f"✅ Напоминание сохранено на **{dt.strftime('%d.%m.%Y в %H:%M')}**."
         except Exception as e:
             session.rollback()
-            return None, f"Ошибка сохранения: {e}"
+            # Для отладки: print(f"Ошибка сохранения: {e}")
+            return f"❌ Произошла ошибка при сохранении напоминания."
         finally:
             session.close()
 
     def get_due_reminders(self):
+        """Возвращает напоминания, срок которых наступил и которые еще не отправлены."""
         session = self.Session()
         try:
-            # SQLAlchemy 2.0: Используем .all() для получения списка
             now = datetime.now()
+            # SQLAlchemy 2.0: Используем .all() для получения списка
             reminders = session.query(Reminder).filter(
                 Reminder.due_date <= now,
                 Reminder.is_sent == False
@@ -80,6 +83,7 @@ class DbManager:
             session.close()
 
     def mark_as_sent(self, reminder_id):
+        """Помечает напоминание как отправленное."""
         session = self.Session()
         try:
             # SQLAlchemy 2.0: Использование .one_or_none()
@@ -90,10 +94,11 @@ class DbManager:
         finally:
             session.close()
             
-    def get_user_reminders(self, user_id, platform):
+    # ПЕРЕИМЕНОВАНО: для совместимости с telegram.py
+    def get_active_reminders(self, user_id, platform):
+        """Возвращает все НЕотправленные напоминания пользователя."""
         session = self.Session()
         try:
-            # Получаем все неотправленные напоминания пользователя
             reminders = session.query(Reminder).filter(
                 Reminder.user_id == str(user_id),
                 Reminder.platform == platform,
@@ -103,7 +108,9 @@ class DbManager:
         finally:
             session.close()
 
-    def clear_user_reminders(self, user_id, platform):
+    # ПЕРЕИМЕНОВАНО: для совместимости с telegram.py
+    def clear_all_reminders(self, user_id, platform):
+        """Удаляет все НЕотправленные напоминания пользователя."""
         session = self.Session()
         try:
             deleted_count = session.query(Reminder).filter(
