@@ -4,7 +4,7 @@ from base import BaseGateway
 from db_manager import DbManager
 from config import TELEGRAM_TOKEN
 from aiogram import Bot, Dispatcher as AioDispatcher, types
-from aiogram.client.default import DefaultBotProperties  # Новый импорт!
+from aiogram.client.bot import DefaultBotProperties # ИСПРАВЛЕННЫЙ ИМПОРТ
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 import asyncio
@@ -89,3 +89,4 @@ class TelegramGateway(BaseGateway):
         """Запуск прослушивания Telegram Long Polling."""
         print("Telegram Gateway запущен.")
         await self.dp.start_polling(self.bot)
+
