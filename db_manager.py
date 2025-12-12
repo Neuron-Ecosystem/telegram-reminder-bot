@@ -29,7 +29,7 @@ class DbManager:
         
         # 2. Парсинг времени с учетом текущего времени (для относительных дат)
         # Настройка: prefer_dates_from='future'
-        dt = parse(time_str, settings={'PREFER_DATES_FROM': 'future', 'LANGUAGES': ['ru', 'en']})
+       dt = parse(time_str, settings={'PREFER_DATES_FROM': 'future'})
         
         if not dt:
             return "Не удалось распознать **будущую** дату/время. Попробуйте так: `/remind в 17:00 встреча`"
@@ -122,3 +122,4 @@ class DbManager:
             return deleted_count
         finally:
             session.close()
+
