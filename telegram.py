@@ -1,10 +1,11 @@
-# telegram.py (Исправленная версия для aiogram 3.x)
+# telegram.py
 
 from base import BaseGateway
 from db_manager import DbManager
 from config import TELEGRAM_TOKEN
 from aiogram import Bot, Dispatcher as AioDispatcher, types
-from aiogram.client.bot import DefaultBotProperties # ИСПРАВЛЕННЫЙ ИМПОРТ
+# Используем более стабильный импорт для DefaultBotProperties (мы это исправляли ранее)
+from aiogram.client.bot import DefaultBotProperties 
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 import asyncio
@@ -31,7 +32,8 @@ class TelegramGateway(BaseGateway):
 
     async def send_message(self, user_id: str, text: str):
         """Отправляет сообщение пользователю Telegram."""
-        await self.bot.send_message(user_id, text)
+        # aiogram может работать с int, но везде мы используем str для единообразия
+        await self.bot.send_message(int(user_id), text)
 
     async def handle_start(self, message: types.Message):
         """Обработка команды /start (инструкция)."""
@@ -50,19 +52,27 @@ class TelegramGateway(BaseGateway):
 
     async def handle_remind(self, message: types.Message):
         """Обработка команды /remind (создание напоминания)."""
-        raw_text = message.text.replace("/remind", "", 1).strip()
-
-        if not raw_text:
+        
+        # ИСПРАВЛЕНИЕ ПАРСИНГА: Надежно отделяем команду от текста
+        parts = message.text.split(maxsplit=1) 
+        
+        if len(parts) < 2:
             await message.answer("Пожалуйста, укажите время и текст напоминания.")
             return
 
+        raw_text = parts[1].strip() # Это 'время текст'
+
         user_id = str(message.from_user.id)
+        
+        # ПОРЯДОК: Передаем аргументы в порядке (platform, user_id, raw_text)
         response = self.db_manager.add_reminder(self.platform, user_id, raw_text)
         await message.answer(response)
 
     async def handle_list(self, message: types.Message):
         """Обработка команды /list (просмотр активных напоминаний)."""
         user_id = str(message.from_user.id)
+        
+        # Имя метода изменено на get_active_reminders для совместимости с db_manager.py
         reminders = self.db_manager.get_active_reminders(user_id, self.platform)
 
         if not reminders:
@@ -78,6 +88,8 @@ class TelegramGateway(BaseGateway):
     async def handle_clear(self, message: types.Message):
         """Обработка команды /clear (удаление всех напоминаний)."""
         user_id = str(message.from_user.id)
+        
+        # Имя метода изменено на clear_all_reminders для совместимости с db_manager.py
         count = self.db_manager.clear_all_reminders(user_id, self.platform)
 
         if count > 0:
@@ -89,4 +101,3 @@ class TelegramGateway(BaseGateway):
         """Запуск прослушивания Telegram Long Polling."""
         print("Telegram Gateway запущен.")
         await self.dp.start_polling(self.bot)
-
